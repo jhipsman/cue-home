@@ -2,6 +2,8 @@ package app.cue.tv.home
 
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -31,6 +33,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +66,8 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 
 // Cue Home's home screen: what you were watching, big, at the top (from Cue
@@ -163,18 +170,29 @@ fun LauncherHome(
 
     // The top: whatever the highlight is on, settled (Continue watching
     // first, before anything is highlighted).
-    var spot by remember { mutableStateOf<Resume?>(null) }
-    val shown = spot ?: resume.firstOrNull()
-    LaunchedEffect(shown?.key) {
-        delay(250)
-        setAmbient(
-            when (shown) {
-                is Resume.FromCue -> shown.tile
-                is Resume.FromApp -> Tile("app", 0, shown.title, null, null, null, shown.image, null, shown.progress?.toDouble(), null, null, null, false)
-                null -> h?.hero
-            },
-        )
+    // Held in a box that only the top and the backdrop read, so moving the
+    // highlight redraws them, not every row on the screen (that made
+    // scrolling choppy on a TV).
+    val spotState = remember { mutableStateOf<Resume?>(null) }
+    val firstResume by rememberUpdatedState(resume.firstOrNull())
+    val heroTile by rememberUpdatedState(h?.hero)
+    LaunchedEffect(Unit) {
+        snapshotFlow { (spotState.value ?: firstResume) to heroTile }
+            .distinctUntilChanged { a, b -> a.first?.key == b.first?.key && a.second?.key == b.second?.key }
+            .collectLatest { (shown, hero) ->
+                // The big picture changes once the highlight has settled,
+                // not at every press while it's moving along a row.
+                delay(450)
+                setAmbient(
+                    when (shown) {
+                        is Resume.FromCue -> shown.tile
+                        is Resume.FromApp -> Tile("app", 0, shown.title, null, null, null, shown.image, null, shown.progress?.toDouble(), null, null, null, false)
+                        null -> hero
+                    },
+                )
+            }
     }
+    val setSpot: (Resume?) -> Unit = remember { { r -> spotState.value = r } }
     // The highlight starts on Continue watching, so it waits for Cue's rows
     // (the apps are read quicker, and would otherwise take it).
     LaunchedEffect(h != null, takeFocus) {
@@ -193,13 +211,13 @@ fun LauncherHome(
     }
     Column(Modifier.fillMaxSize()) {
         TopBar(api)
-        Hero(shown, h?.hero)
-        CompositionLocalProvider(LocalBringIntoViewSpec provides rememberRowsSpec()) {
+        HeroSlot(spotState, resume.firstOrNull(), h?.hero)
+        CompositionLocalProvider(LocalBringIntoViewSpec provides rememberShelvesSpec()) {
             LazyColumn(Modifier.fillMaxSize().onFocusChanged { inList = it.hasFocus }, state = listState, contentPadding = PaddingValues(top = 4.dp, bottom = 120.dp)) {
                 if (resume.isNotEmpty()) item(key = "resume") {
                     Shelf("Continue watching", "${resume.size} in progress" + if (WatchNext.problem == "permission") " · Cue only (see Settings › Cue Home)" else "") {
                         items(resume, key = { it.key }) { r ->
-                            ResumePill(r, memory, "resume/${r.key}", onFocus = { spot = r }) {
+                            ResumePill(r, memory, "resume/${r.key}", onFocus = { setSpot(r) }) {
                                 when (r) {
                                     is Resume.FromCue -> onCard(r.tile)
                                     is Resume.FromApp -> WatchNext.open(ctx, r.next)
@@ -210,29 +228,29 @@ fun LauncherHome(
                 }
                 if (live.isNotEmpty()) item(key = "live") {
                     Shelf("Live TV", "On now") {
-                        item(key = "guide") { GuideTile(memory, "live/guide", onFocus = { spot = null }, onClick = openLive) }
+                        item(key = "guide") { GuideTile(memory, "live/guide", onFocus = { setSpot(null) }, onClick = openLive) }
                         items(live, key = { it.id }) { ch ->
-                            ChannelPill(api, ch, memory, "live/${ch.id}", onFocus = { spot = null }) { playback.playLive(ch, live) }
+                            ChannelPill(api, ch, memory, "live/${ch.id}", onFocus = { setSpot(null) }) { playback.playLive(ch, live) }
                         }
                     }
                 }
                 if (services.isNotEmpty()) item(key = "services") {
                     Shelf("Your services", "What's on each") {
                         items(services, key = { it.key }) { s ->
-                            ServiceCard(s, memory, "services/${s.key}", onFocus = { spot = null }) { openService(s) }
+                            ServiceCard(s, memory, "services/${s.key}", onFocus = { setSpot(null) }) { openService(s) }
                         }
                     }
                 }
                 if (apps.isNotEmpty()) item(key = "apps") {
                     Shelf("Apps", null) {
                         items(apps.take(14), key = { it.key }) { a ->
-                            AppBanner(a, memory, "apps/${a.key}", onFocus = { spot = null }) { TvApps.open(ctx, a.pkg) }
+                            AppBanner(a, memory, "apps/${a.key}", onFocus = { setSpot(null) }) { TvApps.open(ctx, a.pkg) }
                         }
                     }
                 }
                 forYou.forEach { r ->
                     item(key = "cue-${r.key}") {
-                        CardRow(r, memory, onFocus = { t -> spot = Resume.FromCue(t) }, onClick = onCard)
+                        CardRow(r, memory, onFocus = { t -> setSpot(Resume.FromCue(t)) }, onClick = onCard)
                     }
                 }
             }
@@ -265,15 +283,44 @@ private fun TopBar(api: CueApi) {
     }
 }
 
+// The top, reading the highlight itself (see spotState).
+@Composable
+private fun HeroSlot(spot: State<Resume?>, first: Resume?, forYou: Tile?) {
+    Hero(spot.value ?: first, forYou)
+}
+
+// Shelves going up and down: the highlighted row moves to the top of the
+// list with its name in view above it, and stays put while the remote moves
+// along it (the highlight's lift used to nudge the list a few pixels).
+@Composable
+private fun rememberShelvesSpec(): androidx.compose.foundation.gestures.BringIntoViewSpec {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val above = with(density) { 36.dp.toPx() } // the shelf's name and its row's top padding
+    val slack = with(density) { 20.dp.toPx() }
+    return remember(above, slack) {
+        object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float>
+                get() = scrollSpec(240)
+
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                val d = offset - above
+                return if (kotlin.math.abs(d) < slack) 0f else d
+            }
+        }
+    }
+}
+
 // The big words at the top: CONTINUE, the title, where you are in it (in
 // words: its tile below already has the progress bar).
 @Composable
 private fun Hero(resume: Resume?, forYou: Tile?) {
+    val light = lightMode()
     Box(Modifier.fillMaxWidth().height(176.dp).padding(horizontal = Gutter)) {
         AnimatedContent(
             targetState = resume to forYou,
             contentKey = { (r, h) -> r?.key ?: h?.key ?: "" },
-            transitionSpec = { fadeIn(tween(260, delayMillis = 80, easing = Settle)) togetherWith fadeOut(tween(110)) },
+            // Light mode: the words change at once (a fade is a few slow frames there).
+            transitionSpec = { if (light) EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(260, delayMillis = 80, easing = Settle)) togetherWith fadeOut(tween(110)) },
             label = "launcher-hero",
             modifier = Modifier.align(Alignment.BottomStart),
         ) { (r, hero) ->
@@ -423,8 +470,8 @@ private fun ServiceCard(s: BrowseService, memory: FocusMemory, memKey: String, o
 @Composable
 private fun AppBanner(a: TvApp, memory: FocusMemory, memKey: String, onFocus: () -> Unit, onClick: () -> Unit) {
     LaunchCard(memory, memKey, 150.dp, 84.dp, 14.dp, onFocus, onClick, fill = Color(0xFF1B1B1E)) {
-        val banner = remember(a.pkg) { a.banner?.let { bitmap(it, 320, 180) } }
-        val icon = remember(a.pkg) { if (banner == null) a.icon?.let { bitmap(it, 96, 96) } else null }
+        val banner = remember(a.pkg) { a.banner?.let { pictures.getOrPut("b:" + a.pkg) { bitmap(it, 320, 180) } } }
+        val icon = remember(a.pkg) { if (banner == null) a.icon?.let { pictures.getOrPut("i:" + a.pkg) { bitmap(it, 96, 96) } } else null }
         when {
             banner != null -> Image(banner, contentDescription = a.label, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             else -> Column(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -435,6 +482,10 @@ private fun AppBanner(a: TvApp, memory: FocusMemory, memKey: String, onFocus: ()
         }
     }
 }
+
+// The apps' pictures, drawn once (drawing a banner as the Apps row scrolls
+// was a stutter at every step).
+private val pictures = HashMap<String, androidx.compose.ui.graphics.ImageBitmap?>()
 
 private fun bitmap(d: Drawable, w: Int, h: Int) = runCatching { d.toBitmap(w, h).asImageBitmap() }.getOrNull()
 

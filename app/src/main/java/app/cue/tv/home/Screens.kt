@@ -16,6 +16,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleOut
@@ -951,7 +952,7 @@ fun Banner(api: CueApi, c: Tile) {
 fun HomeBackdrop(api: CueApi, c: Tile?) {
     Box(Modifier.fillMaxSize().background(Background)) {
         val area = Modifier.align(Alignment.TopEnd).fillMaxWidth(0.82f).fillMaxHeight(0.8f)
-        Crossfade(targetState = c?.backdrop, animationSpec = tween(450, easing = Settle), label = "home-backdrop", modifier = area) { u ->
+        Crossfade(targetState = c?.backdrop, animationSpec = if (lightMode()) snap() else tween(450, easing = Settle), label = "home-backdrop", modifier = area) { u ->
             if (u != null) AsyncImage(model = u, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
         if (c != null) key(c.key) { BannerPreview(api, c, area) }
