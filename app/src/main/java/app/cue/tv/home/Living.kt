@@ -79,10 +79,18 @@ object LightMode {
         val v = if (prefs.contains(KEY)) prefs.getBoolean(KEY, false) else {
             val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val mem = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
-            am.isLowRamDevice || mem.totalMem < 2_600_000_000L
+            am.isLowRamDevice || mem.totalMem < 2_600_000_000L || builtInTV()
         }
         known = v
         return v
+    }
+
+    // A TV with Google TV built in (TCL, Hisense, Sony, Philips…) runs its
+    // menus on the chip that also drives the panel, a much slower one than a
+    // streaming box's: Light mode from the start there.
+    private fun builtInTV(): Boolean {
+        val who = (android.os.Build.MANUFACTURER + " " + android.os.Build.BRAND).lowercase()
+        return listOf("tcl", "hisense", "sony", "philips", "tpv", "sharp", "skyworth", "xiaomi", "toshiba", "panasonic").any { it in who }
     }
 
     fun set(ctx: Context, on: Boolean) {
