@@ -1,0 +1,380 @@
+@file:OptIn(
+    androidx.tv.material3.ExperimentalTvMaterial3Api::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+)
+
+package app.cue.tv.home
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Border
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.Text
+import coil.compose.AsyncImage
+
+// Pieces the app's screens share: colours, artwork, posters, rows.
+
+// The profile's theme, as chosen in Watch (Colors): its colour, how much
+// it glows, and the background (Graphite, Midnight, Black, Slate or Tinted). The
+// colours below follow it, so the whole app changes with it.
+object CueTheme {
+    var accent by androidx.compose.runtime.mutableStateOf(CueWhite)
+    var background by androidx.compose.runtime.mutableStateOf("graphite")
+    var glow by androidx.compose.runtime.mutableStateOf("off")
+
+    fun from(api: CueApi) {
+        accent = accentOf(api.accent)
+        background = api.themeBackground.ifEmpty { "graphite" }
+        glow = api.themeGlow.ifEmpty { "off" }
+    }
+}
+
+val CueTeal = Color(0xFF34D1BF)
+// Cue's own colour now: a soft white on graphite greys.
+val CueWhite = Color(0xFFE4E4E7)
+
+val Background: Color get() = when (CueTheme.background) {
+    "black" -> Color(0xFF000000)
+    "midnight" -> Color(0xFF101114)
+    "slate" -> Color(0xFF0E1522)
+    "tinted" -> androidx.compose.ui.graphics.lerp(Color(0xFF0D0E11), CueTheme.accent, 0.07f)
+    else -> Color(0xFF0B0B0C) // graphite
+}
+val Panel: Color get() = when (CueTheme.background) {
+    "black" -> Color(0xFF141416)
+    "midnight" -> Color(0xFF1B1D22)
+    "slate" -> Color(0xFF1A2333)
+    "tinted" -> androidx.compose.ui.graphics.lerp(Color(0xFF191B20), CueTheme.accent, 0.1f)
+    else -> Color(0xFF171719) // graphite
+}
+val Dim = Color(0xFFA6A8AE)
+val Teal: Color get() = CueTheme.accent
+// How strongly things glow in the theme's colour: off, soft or strong.
+val GlowAmount: Float get() = when (CueTheme.glow) {
+    "off" -> 0f
+    "strong" -> 1.8f
+    else -> 1f
+}
+
+// The background at an opacity: for the fades over pictures.
+fun shade(alpha: Float): Color = Background.copy(alpha = alpha)
+
+// The profile's colour (or Cue's white), for focus rings and progress.
+val LocalAccent = compositionLocalOf { CueWhite }
+
+fun accentOf(hex: String): Color = try {
+    if (hex.length == 7 && hex.startsWith("#")) Color(android.graphics.Color.parseColor(hex)) else CueWhite
+} catch (e: Exception) {
+    CueWhite
+}
+
+// TMDB pictures a TV needs are smaller than the web's: they load faster.
+fun small(url: String?): String? = url?.replace("/t/p/w1280/", "/t/p/w780/")
+
+// An episode's still sharp at TV size: TMDB's are 300 px wide by default,
+// stretched to twice that on a TV's tile (which is when pixels show).
+fun sharpStill(url: String?): String? = url?.replace("/t/p/w300/", "/t/p/w780/")
+
+// Which card had the highlight on a screen, so coming back puts it there.
+class FocusMemory {
+    var key: String? = null
+    private val requesters = HashMap<String, FocusRequester>()
+    fun requester(k: String): FocusRequester = requesters.getOrPut(k) { FocusRequester() }
+    fun restore(fallback: String?): Boolean {
+        val k = key ?: fallback ?: return false
+        return runCatching { requester(k).requestFocus() }.isSuccess
+    }
+}
+
+@Composable
+fun Art(url: String?, modifier: Modifier = Modifier, label: String = "") {
+    Box(modifier.background(Panel), contentAlignment = Alignment.Center) {
+        if (label.isNotEmpty()) Text(label, color = Dim, fontSize = 11.sp, maxLines = 3, modifier = Modifier.padding(8.dp))
+        if (url != null) AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+    }
+}
+
+// A card that lifts, gets a thin white edge and a soft glow when the
+// highlight is on it, its name underneath (white while highlighted).
+// wide is Continue Watching's: the picture with the episode's code on it,
+// and the show and the episode's name underneath, as in the TV apps.
+@Composable
+fun PosterCard(card: Tile, memory: FocusMemory, memKey: String, wide: Boolean = false, onFocus: (Tile) -> Unit = {}, onClick: (Tile) -> Unit) {
+    val accent = LocalAccent.current
+    val w: Dp = if (wide) 224.dp else 112.dp
+    val h: Dp = if (wide) 126.dp else 168.dp
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(CardCorner)
+    val api = LocalApi.current
+    val ex = if (wide && api != null) rememberExtras(api, card.kind, card.tmdbId, ask = focused) else null
+    val showLogo = focused && !ex?.logo.isNullOrEmpty()
+    // Drawn above its neighbours while it's lifted.
+    Column(Modifier.width(w).zIndex(if (focused) 1f else 0f)) {
+        Card(
+            onClick = { onClick(card) },
+            modifier = Modifier
+                .size(w, h)
+                .lift(focused, if (wide) 1.09f else 1.11f, shape)
+                .focusRequester(memory.requester(memKey))
+                .onFocusChanged {
+                    focused = it.isFocused
+                    if (it.isFocused) { memory.key = memKey; onFocus(card) }
+                },
+            shape = CardDefaults.shape(shape),
+            scale = CardDefaults.scale(focusedScale = 1f),
+            // A faint edge drawn round every card (lines are drawn smoothed),
+            // so the rounded corners don't show stair-steps as cards scale.
+            border = CardDefaults.border(
+                border = Border(BorderStroke(1.dp, Color(0x14FFFFFF)), shape = shape),
+                focusedBorder = Border(BorderStroke(1.dp, Color(0x59FFFFFF)), shape = shape),
+            ),
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                Art(small(if (wide) card.backdrop ?: card.poster else card.poster), Modifier.fillMaxSize(), card.title)
+                if (wide) {
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color(0x99000000))))
+                    if (!showLogo) epCode(card.season, card.episode)?.let { Chip(it, Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 10.dp)) }
+                    if (showLogo) {
+                        AsyncImage(
+                            model = ex?.logo, contentDescription = null, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
+                            modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 14.dp)
+                                .widthIn(max = 130.dp).heightIn(max = 40.dp),
+                        )
+                    }
+                }
+                card.progress?.takeIf { it > 0 }?.let { p ->
+                    Box(Modifier.align(Alignment.BottomStart).padding(horizontal = 8.dp, vertical = 5.dp).fillMaxWidth().height(3.dp)
+                        .clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF))) {
+                        Box(Modifier.fillMaxWidth(p.toFloat().coerceIn(0f, 1f)).fillMaxHeight().background(accent)) // the theme's colour, not the picture's
+                    }
+                }
+                if (card.isNew) Chip("NEW", Modifier.align(Alignment.TopStart).padding(7.dp), bg = accent, fg = Color.Black)
+                if (card.inTheaters) Chip("IN THEATERS", Modifier.align(Alignment.TopStart).padding(7.dp), bg = Color(0xFFF5C518), fg = Color.Black)
+                if (card.outNow) Chip("OUT NOW", Modifier.align(Alignment.TopStart).padding(7.dp), bg = accent, fg = Color.Black)
+                if (card.soon) Chip(card.outDate?.let { "Streaming ${shortDay(it)}" } ?: "COMING SOON", Modifier.align(Alignment.TopStart).padding(7.dp),
+                    bg = Color(0xE6FFFFFF), fg = Color.Black)
+                Sheen(focused)
+            }
+        }
+        // The name brightens and steps down with the lift: drawn, not laid out
+        // again, each frame.
+        val on by animateFloatAsState(if (focused) 1f else 0f, tween(190, easing = Settle), label = "name")
+        val under = Modifier.graphicsLayer { alpha = 0.7f + 0.3f * on; translationY = 8.dp.toPx() * on }
+        Text(card.title, fontSize = if (wide) 12.sp else 11.sp, fontWeight = FontWeight.Medium, color = Color.White, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 9.dp, start = 2.dp).then(under))
+        if (wide) card.episodeTitle?.let {
+            Text(it, fontSize = 10.sp, color = Dim, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp, top = 1.dp).then(under))
+        }
+    }
+}
+
+// A row's name and its cards, sideways.
+@Composable
+fun CardRow(row: Shelf, memory: FocusMemory, onFocus: (Tile) -> Unit = {}, onClick: (Tile) -> Unit) {
+    val wide = row.key == "continue" || row.key == "new-episodes"
+    Column(Modifier.padding(bottom = 14.dp)) {
+        Text(row.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xF2FFFFFF), modifier = Modifier.padding(start = Gutter + 2.dp, bottom = 2.dp))
+        // Coming back to a row puts the highlight on the poster it was on.
+        // Left and right, the highlight settles near the start of the row.
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides PivotSpec) {
+        LazyRow(
+            modifier = Modifier.keepRowFocus(),
+            // Room above and below for a card's lift and shadow.
+            contentPadding = PaddingValues(horizontal = Gutter, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            items(row.items.distinctBy { it.key }, key = { it.key }) { c ->
+                PosterCard(c, memory, "${row.key}/${c.key}", wide, onFocus, onClick)
+            }
+        }
+        }
+    }
+}
+
+@Composable
+fun Centered(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+}
+
+@Composable
+fun Gap(h: Dp) = Spacer(Modifier.height(h))
+
+@Composable
+fun HGap(w: Dp) = Spacer(Modifier.width(w))
+
+// Scrolling the TV way: the highlighted row or poster moves to near the
+// start of the list (rows to the top, posters to the left), instead of
+// only as far as it takes to show it.
+val PivotSpec = object : BringIntoViewSpec {
+    // Gliding there with a short, soft settle (a long glide stutters on a
+    // TV's slow processor).
+    override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
+        androidx.compose.animation.core.tween(320, easing = Settle)
+
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+        offset - containerSize * 0.04f
+}
+
+// Home's rows going up and down: the highlighted poster's row moves to the
+// top with its title in view above it (lined up by the poster alone, the
+// title slid under the banner).
+@Composable
+fun rememberRowsSpec(): BringIntoViewSpec {
+    val above = with(androidx.compose.ui.platform.LocalDensity.current) { 46.dp.toPx() } // the title and the row's top padding
+    val slack = with(androidx.compose.ui.platform.LocalDensity.current) { 24.dp.toPx() }
+    return remember(above, slack) {
+        object : BringIntoViewSpec {
+            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
+                androidx.compose.animation.core.tween(320, easing = Settle)
+
+            // Already in place, give or take the highlighted poster's lift
+            // (it grows a little, which moved the row by a few pixels and
+            // back at every press: the page bounced along a row).
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                val d = offset - above
+                return if (kotlin.math.abs(d) < slack) 0f else d
+            }
+        }
+    }
+}
+
+// A title's page scrolls only as far as the highlight needs: opening it with
+// Play highlighted leaves the logo, scores and story in view, and going down
+// to More Like This lifts the page just enough to show the row.
+val GentleSpec = object : BringIntoViewSpec {
+    override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
+        androidx.compose.animation.core.tween(420, easing = Settle)
+
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val top = containerSize * 0.08f
+        val bottom = containerSize * 0.94f
+        return when {
+            offset >= top && offset + size <= bottom -> 0f
+            offset < top || size > bottom - top -> offset - top
+            else -> offset + size - bottom
+        }
+    }
+}
+
+// A row that remembers which of its cards had the highlight, so coming
+// back into it (up or down from another row, or from the side menu) lands
+// there again. In place of Compose's focusRestorer(), which pins the card
+// in a lazy row and on some TVs releases that pin twice ("Release should
+// only be called once"), crashing the app as the remote moves between
+// rows. This keeps no pin: if the remembered card has scrolled away, the
+// highlight goes to the nearest one instead.
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+fun Modifier.keepRowFocus(): Modifier {
+    val group = remember { FocusRequester() }
+    return this
+        .focusRequester(group)
+        .focusProperties {
+            exit = {
+                runCatching { group.saveFocusedChild() }
+                FocusRequester.Default
+            }
+            enter = {
+                if (runCatching { group.restoreFocusedChild() }.getOrDefault(false)) FocusRequester.Cancel else FocusRequester.Default
+            }
+        }
+        .focusGroup()
+}
+
+// On a TV a text box would keep the highlight (up and down move its
+// cursor): up and down leave it instead.
+@Composable
+fun Modifier.leaveWithArrows(): Modifier {
+    val focus = LocalFocusManager.current
+    return onPreviewKeyEvent { e ->
+        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+        when (e.key) {
+            Key.DirectionDown -> focus.moveFocus(FocusDirection.Down)
+            Key.DirectionUp -> focus.moveFocus(FocusDirection.Up)
+            else -> false
+        }
+    }
+}
+
+/** "Today", "Tomorrow" or "Friday" for a day in the next week, else "March 4th". */
+fun dayName(day: String): String = runCatching {
+    val (y, m, d) = day.take(10).split('-').map { it.toInt() }
+    val at = java.util.Calendar.getInstance().apply { clear(); set(y, m - 1, d) }
+    val today = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+    }
+    val diff = Math.round((at.timeInMillis - today.timeInMillis) / 86_400_000.0).toInt()
+    val days = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+    when {
+        diff == 0 -> "Today"
+        diff == 1 -> "Tomorrow"
+        diff in 2..6 -> days[at.get(java.util.Calendar.DAY_OF_WEEK) - 1]
+        else -> shortDay(day)
+    }
+}.getOrDefault(day)
+
+/** "March 4th" from "2027-03-04" ("March 4th, 2027" when not this year). */
+fun shortDay(day: String): String = runCatching {
+    val (y, m, d) = day.take(10).split('-').map { it.toInt() }
+    val months = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+    val t = d % 100
+    val suffix = if (t in 11..13) "th" else when (d % 10) { 1 -> "st"; 2 -> "nd"; 3 -> "rd"; else -> "th" }
+    val s = "${months[m - 1]} $d$suffix"
+    if (y == java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) s else "$s, $y"
+}.getOrDefault(day)
