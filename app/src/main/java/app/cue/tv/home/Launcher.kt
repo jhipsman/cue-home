@@ -265,7 +265,8 @@ private fun TopBar(api: CueApi) {
     }
 }
 
-// The big words at the top: CONTINUE, the title, where you are in it.
+// The big words at the top: CONTINUE, the title, where you are in it (in
+// words: its tile below already has the progress bar).
 @Composable
 private fun Hero(resume: Resume?, forYou: Tile?) {
     Box(Modifier.fillMaxWidth().height(176.dp).padding(horizontal = Gutter)) {
@@ -289,12 +290,6 @@ private fun Hero(resume: Resume?, forYou: Tile?) {
                 if (line.isNotEmpty()) {
                     Gap(6.dp)
                     Text(line, fontSize = 13.sp, color = Color(0xD9FFFFFF), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                r?.progress?.let { p ->
-                    Gap(10.dp)
-                    Box(Modifier.width(220.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF))) {
-                        Box(Modifier.fillMaxWidth(p).fillMaxHeight().background(Color.White))
-                    }
                 }
             }
         }
