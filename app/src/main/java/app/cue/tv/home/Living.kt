@@ -72,6 +72,9 @@ object LightMode {
 
     private var known: Boolean? = null // worked out once: every card asks while it draws
 
+    /** Light mode as last worked out (for code that runs outside drawing, such as scrolling). */
+    val now: Boolean get() = known == true
+
     fun on(ctx: Context): Boolean {
         if (changed < 0) return false // read, so a switch on Profile takes effect at once
         known?.let { return it }
@@ -174,9 +177,12 @@ fun Screensaver(api: CueApi, slides: List<SaverSlide>) {
         }
     }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Crossfade(targetState = index % slides.size, animationSpec = tween(2200), label = "saver") { i ->
+        // Light mode: the pictures change without the slow pan and long fade
+        // (a slow TV would draw them nonstop at a few frames a second).
+        val still = LightMode.now
+        Crossfade(targetState = index % slides.size, animationSpec = if (still) androidx.compose.animation.core.snap() else tween(2200), label = "saver") { i ->
             val drift = remember(i) { Animatable(0f) }
-            LaunchedEffect(i) { drift.animateTo(1f, tween((SLIDE_MS + 3000).toInt(), easing = LinearEasing)) }
+            LaunchedEffect(i) { if (!still) drift.animateTo(1f, tween((SLIDE_MS + 3000).toInt(), easing = LinearEasing)) }
             AsyncImage(
                 model = slides[i].tile.backdrop,
                 contentDescription = null,

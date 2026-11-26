@@ -355,7 +355,7 @@ fun Modifier.lift(focused: Boolean, scale: Float, shape: androidx.compose.ui.gra
     // A short glide, no spring: a TV's processor keeps up with it, and the
     // highlight lands where the remote put it at once.
     val s by androidx.compose.animation.core.animateFloatAsState(if (focused) scale else 1f,
-        androidx.compose.animation.core.tween(190, easing = Settle), label = "lift")
+        if (LightMode.now) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(190, easing = Settle), label = "lift")
     // The shadow glows in the picture's colour. It's read as the frame is
     // drawn, so a new colour doesn't rebuild every card on the screen.
     val tintState = LocalTint.current

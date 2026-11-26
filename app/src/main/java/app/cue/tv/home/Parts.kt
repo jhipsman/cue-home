@@ -264,8 +264,8 @@ fun HGap(w: Dp) = Spacer(Modifier.width(w))
 val PivotSpec = object : BringIntoViewSpec {
     // Gliding there with a short, soft settle (a long glide stutters on a
     // TV's slow processor).
-    override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
-        androidx.compose.animation.core.tween(320, easing = Settle)
+    override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float>
+        get() = scrollSpec(320)
 
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
         offset - containerSize * 0.04f
@@ -280,8 +280,8 @@ fun rememberRowsSpec(): BringIntoViewSpec {
     val slack = with(androidx.compose.ui.platform.LocalDensity.current) { 24.dp.toPx() }
     return remember(above, slack) {
         object : BringIntoViewSpec {
-            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
-                androidx.compose.animation.core.tween(320, easing = Settle)
+            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float>
+                get() = scrollSpec(320)
 
             // Already in place, give or take the highlighted poster's lift
             // (it grows a little, which moved the row by a few pixels and
@@ -298,8 +298,8 @@ fun rememberRowsSpec(): BringIntoViewSpec {
 // Play highlighted leaves the logo, scores and story in view, and going down
 // to More Like This lifts the page just enough to show the row.
 val GentleSpec = object : BringIntoViewSpec {
-    override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
-        androidx.compose.animation.core.tween(420, easing = Settle)
+    override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float>
+        get() = scrollSpec(420)
 
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
         val top = containerSize * 0.08f
@@ -378,3 +378,8 @@ fun shortDay(day: String): String = runCatching {
     val s = "${months[m - 1]} $d$suffix"
     if (y == java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) s else "$s, $y"
 }.getOrDefault(day)
+
+// Gliding to the highlight, or (Light mode: a slow TV draws a glide as a few
+// stuttering frames) jumping there at once.
+fun scrollSpec(ms: Int): androidx.compose.animation.core.AnimationSpec<Float> =
+    if (LightMode.now) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(ms, easing = Settle)

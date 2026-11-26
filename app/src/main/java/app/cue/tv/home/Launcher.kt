@@ -2,6 +2,8 @@ package app.cue.tv.home
 
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -297,8 +299,8 @@ private fun rememberShelvesSpec(): androidx.compose.foundation.gestures.BringInt
     val slack = with(density) { 20.dp.toPx() }
     return remember(above, slack) {
         object : androidx.compose.foundation.gestures.BringIntoViewSpec {
-            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
-                androidx.compose.animation.core.tween(240, easing = Settle)
+            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float>
+                get() = scrollSpec(240)
 
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
                 val d = offset - above
@@ -312,11 +314,13 @@ private fun rememberShelvesSpec(): androidx.compose.foundation.gestures.BringInt
 // words: its tile below already has the progress bar).
 @Composable
 private fun Hero(resume: Resume?, forYou: Tile?) {
+    val light = lightMode()
     Box(Modifier.fillMaxWidth().height(176.dp).padding(horizontal = Gutter)) {
         AnimatedContent(
             targetState = resume to forYou,
             contentKey = { (r, h) -> r?.key ?: h?.key ?: "" },
-            transitionSpec = { fadeIn(tween(260, delayMillis = 80, easing = Settle)) togetherWith fadeOut(tween(110)) },
+            // Light mode: the words change at once (a fade is a few slow frames there).
+            transitionSpec = { if (light) EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(260, delayMillis = 80, easing = Settle)) togetherWith fadeOut(tween(110)) },
             label = "launcher-hero",
             modifier = Modifier.align(Alignment.BottomStart),
         ) { (r, hero) ->
