@@ -1,0 +1,99 @@
+package app.cue.tv.home
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import app.cue.tv.CrashLog
+import app.cue.tv.MainActivity
+import app.cue.tv.PlayerActivity
+import app.cue.tv.Server
+import app.cue.tv.SetupActivity
+
+// Cue on the TV: the app's own screens (Compose for TV), playing in
+// PlayerActivity. What isn't native yet (the full Live TV guide, settings)
+// opens in the web view (MainActivity), signed in and on the same profile.
+class HomeActivity : ComponentActivity() {
+    companion object {
+        /** Set by the Home button service: back to the home screen. */
+        const val GO_HOME = "app.cue.home.GO_HOME"
+    }
+
+    // Cue Home is the TV's home screen: pressing Home while it's open (or the
+    // Home button service sending it) goes back to the home screen.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(GO_HOME, false) || intent.hasCategory(Intent.CATEGORY_HOME)) HomeSignal.press()
+    }
+
+    override fun onDestroy() {
+        if (isFinishing) app.cue.tv.ScreenLink.stop()
+        app.cue.tv.ScreenLink.onPlay = null
+        super.onDestroy()
+    }
+
+    private lateinit var api: CueApi
+    private lateinit var playback: Playback
+
+    private val player = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        val d = res.data
+        playback.ended(
+            d?.getStringExtra(PlayerActivity.RESULT_REASON) ?: "back",
+            d?.getLongExtra(PlayerActivity.RESULT_POSITION, 0L) ?: 0L,
+            d?.getStringExtra(PlayerActivity.RESULT_MESSAGE) ?: "",
+            d?.getStringExtra(PlayerActivity.RESULT_EPISODE) ?: "",
+        )
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        CrashLog.install(this)
+        val server = Server.address(this)
+        if (server == null) {
+            startActivity(Intent(this, SetupActivity::class.java))
+            finish()
+            return
+        }
+        api = CueApi(this, server)
+        lifecycleScope.launch { CrashLog.sendSaved(this@HomeActivity, api) }
+        playback = Playback(api, lifecycleScope) { json ->
+            player.launch(
+                Intent(this, PlayerActivity::class.java)
+                    .putExtra(PlayerActivity.EXTRA_JSON, json)
+                    .putExtra(PlayerActivity.EXTRA_SERVER, server),
+                // The player fades in, rather than the TV's own window switch.
+                androidx.core.app.ActivityOptionsCompat.makeCustomAnimation(this, android.R.anim.fade_in, android.R.anim.fade_out),
+            )
+        }
+        // Send to TV: a phone can see this TV and send it a title to play.
+        app.cue.tv.ScreenLink.start(this, server) { api.profileToken }
+        app.cue.tv.ScreenLink.onPlay = { t ->
+            playback.playTitle(t.optString("kind"), t.optInt("tmdbId"), t.optInt("season"), t.optInt("episode"))
+        }
+        // A home screen has nowhere to go back to: Back on it does nothing
+        // (the screens' own Back handlers come first).
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {}
+        })
+        setContent {
+            CueRoot(
+                api,
+                playback,
+                openWeb = { path ->
+                    startActivity(
+                        Intent(this, MainActivity::class.java)
+                            .putExtra(MainActivity.EXTRA_PATH, path)
+                            .putExtra(MainActivity.EXTRA_PROFILE, api.profileToken),
+                    )
+                },
+                changeServer = {
+                    startActivity(Intent(this, SetupActivity::class.java).putExtra(SetupActivity.EXTRA_ADDRESS, server))
+                    finish()
+                },
+            )
+        }
+    }
+}
