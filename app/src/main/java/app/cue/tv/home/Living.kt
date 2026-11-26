@@ -505,7 +505,7 @@ private class VideoCrop {
 @Composable
 fun BannerPreview(api: CueApi, tile: Tile, modifier: Modifier = Modifier, onShown: (Boolean) -> Unit = {}) {
     val ctx = LocalContext.current
-    if (!trailersFit(ctx)) return
+    if (!trailersFit(ctx) || tile.tmdbId <= 0) return // (another app's title has no clip)
     val key = "${tile.kind}-${tile.tmdbId}-${tile.season ?: 0}-${tile.episode ?: 0}"
     var url by remember(key) { mutableStateOf<String?>(null) }
     var shown by remember(key) { mutableStateOf(false) }

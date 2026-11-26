@@ -17,6 +17,18 @@ import app.cue.tv.SetupActivity
 // PlayerActivity. What isn't native yet (the full Live TV guide, settings)
 // opens in the web view (MainActivity), signed in and on the same profile.
 class HomeActivity : ComponentActivity() {
+    companion object {
+        /** Set by the Home button service: back to the home screen. */
+        const val GO_HOME = "app.cue.home.GO_HOME"
+    }
+
+    // Cue Home is the TV's home screen: pressing Home while it's open (or the
+    // Home button service sending it) goes back to the home screen.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(GO_HOME, false) || intent.hasCategory(Intent.CATEGORY_HOME)) HomeSignal.press()
+    }
+
     override fun onDestroy() {
         if (isFinishing) app.cue.tv.ScreenLink.stop()
         app.cue.tv.ScreenLink.onPlay = null
@@ -61,6 +73,11 @@ class HomeActivity : ComponentActivity() {
         app.cue.tv.ScreenLink.onPlay = { t ->
             playback.playTitle(t.optString("kind"), t.optInt("tmdbId"), t.optInt("season"), t.optInt("episode"))
         }
+        // A home screen has nowhere to go back to: Back on it does nothing
+        // (the screens' own Back handlers come first).
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {}
+        })
         setContent {
             CueRoot(
                 api,

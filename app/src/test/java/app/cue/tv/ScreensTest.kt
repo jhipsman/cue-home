@@ -54,6 +54,21 @@ class ScreensTest {
             .putBoolean("tour.v1", true)
             .commit()
         File("build/screens").mkdirs()
+        // A few apps on the TV, for the Apps row.
+        val pm = org.robolectric.Shadows.shadowOf(ctx.packageManager)
+        for ((pkg, label) in listOf("com.netflix.ninja" to "Netflix", "com.google.android.youtube.tv" to "YouTube", "com.plexapp.android" to "Plex", "com.example.weather" to "Weather")) {
+            val ri = android.content.pm.ResolveInfo().apply {
+                activityInfo = android.content.pm.ActivityInfo().apply {
+                    packageName = pkg
+                    name = "$pkg.Main"
+                    nonLocalizedLabel = label
+                    applicationInfo = android.content.pm.ApplicationInfo().apply { packageName = pkg }
+                }
+                nonLocalizedLabel = label
+            }
+            pm.addResolveInfoForIntent(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LEANBACK_LAUNCHER), ri)
+        }
+        app.cue.tv.home.TvApps.refresh()
     }
 
     @After
@@ -120,6 +135,11 @@ class ScreensTest {
         scenario = ActivityScenario.launch(HomeActivity::class.java)
         see("Continue watching")
         shot("home")
+        // Down Cue Home: Live TV, the services, the apps.
+        press(KeyEvent.KEYCODE_DPAD_DOWN, 3)
+        see("Apps")
+        shot("home-lower")
+        press(KeyEvent.KEYCODE_DPAD_UP, 3)
         press(KeyEvent.KEYCODE_DPAD_LEFT, 3)
         see("Browse")
         shot("side-menu")

@@ -44,12 +44,14 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-// The app updating itself. Cue forwards /tv.version to the newest build's
-// number (published beside the APK by the TV app workflow) and /tv.apk to
-// the APK. When the number is above this build's, Cue offers the update on
+// The app updating itself, from Cue Home's own releases on GitHub (not the
+// Cue TV app's): home-latest holds the newest APK and its build number,
+// published by the workflow. When the number is above this build's, Cue offers the update on
 // opening and from Profile: Update downloads the APK into the app's cache
 // and hands it to Android's installer, which asks the household to confirm
 // and installs it over this one (the same signing key, so nothing is lost).
+const val UPDATES = "https://github.com/jhipsman/cue-home/releases/download/home-latest"
+
 object AppUpdate {
     /** The update on offer (null: none, or not checked yet), and whether its card shows. */
     var offer by mutableStateOf<UpdateOffer?>(null)
@@ -84,7 +86,7 @@ object AppUpdate {
     /** The newest build's number on offer, or null when it can't be told. */
     suspend fun latest(server: String): Long? = withContext(Dispatchers.IO) {
         runCatching {
-            val c = open("$server/tv.version")
+            val c = open("$UPDATES/cue-home.version")
             try {
                 if (c.responseCode !in 200..299) return@runCatching null
                 c.inputStream.bufferedReader().use { it.readText() }.trim().toLongOrNull()
@@ -98,8 +100,8 @@ object AppUpdate {
     suspend fun download(ctx: Context, server: String, progress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
         val dir = File(ctx.cacheDir, "updates").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
-        val file = File(dir, "cue-tv.apk")
-        val c = open("$server/tv.apk")
+        val file = File(dir, "cue-home.apk")
+        val c = open("$UPDATES/cue-home.apk")
         try {
             if (c.responseCode !in 200..299) throw IllegalStateException("The download answered ${c.responseCode}.")
             val total = c.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
@@ -217,7 +219,7 @@ fun UpdateCard(api: CueApi, offer: UpdateOffer, later: () -> Unit) {
                     offer.problem = ""
                     if (Build.VERSION.SDK_INT < 24) {
                         // Android 6's installer can't open a file another app shares.
-                        offer.problem = "This TV can't install it from inside Cue. Install the update with Downloader from ${api.server}/tv.apk."
+                        offer.problem = "This TV can't install it from inside Cue. Install the update with Downloader from $UPDATES/cue-home.apk."
                         return@Pill
                     }
                     if (!AppUpdate.allowedToInstall(ctx)) {
@@ -232,9 +234,9 @@ fun UpdateCard(api: CueApi, offer: UpdateOffer, later: () -> Unit) {
                             offer.progress = 1f
                             AppUpdate.install(ctx, apk)
                         } catch (e: ActivityNotFoundException) {
-                            offer.problem = "This TV has no installer Cue can open. Install the update with Downloader from ${api.server}/tv.apk."
+                            offer.problem = "This TV has no installer Cue can open. Install the update with Downloader from $UPDATES/cue-home.apk."
                         } catch (e: Exception) {
-                            offer.problem = "Couldn't download the update (${e.message ?: "no answer"}). Try again, or install it with Downloader from ${api.server}/tv.apk."
+                            offer.problem = "Couldn't download the update (${e.message ?: "no answer"}). Try again, or install it with Downloader from $UPDATES/cue-home.apk."
                         } finally {
                             offer.progress = null
                         }

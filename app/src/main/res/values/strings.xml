@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_button_service">Makes the remote\'s Home button open Cue Home. It only notices the Home key and which app comes to the front; it never reads what\'s on the screen.</string>
+</resources>

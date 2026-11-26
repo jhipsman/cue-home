@@ -50,6 +50,17 @@ object ServiceApps {
         return null
     }
 
+    /** Whether the service's app is on this TV. */
+    fun has(ctx: Context, key: String): Boolean = installed(ctx, key) != null
+
+    /** Opens the service's app at its home. */
+    fun openApp(ctx: Context, key: String): Boolean {
+        val pkg = installed(ctx, key) ?: return false
+        val pm = ctx.packageManager
+        val i = pm.getLeanbackLaunchIntentForPackage(pkg) ?: pm.getLaunchIntentForPackage(pkg) ?: return false
+        return runCatching { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+    }
+
     /** Opens the service's app at the title (a search for it) where it takes one, else at its home. */
     fun open(ctx: Context, key: String, title: String): Boolean {
         val pkg = installed(ctx, key) ?: return false

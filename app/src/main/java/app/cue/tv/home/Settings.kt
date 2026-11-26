@@ -61,6 +61,7 @@ import java.util.Date
 // administrator) and About and updates.
 
 private enum class SettingsSection(val title: String, val summary: String) {
+    Home("Cue Home", "Home screen, other apps' progress"),
     Account("Account and server", "Profile, server, sign-in"),
     Playback("Playback", "Subtitles, sound, previews"),
     Problems("Problems", "Crashes on this TV"),
@@ -70,7 +71,7 @@ private enum class SettingsSection(val title: String, val summary: String) {
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun SettingsScreen(api: CueApi, switchProfile: () -> Unit, changeServer: () -> Unit, openWeb: (String) -> Unit) {
-    var section by remember { mutableStateOf(SettingsSection.Account) }
+    var section by remember { mutableStateOf(SettingsSection.Home) }
     val sectionFocus = remember { SettingsSection.entries.map { FocusRequester() } }
     var managing by remember { mutableStateOf(false) }
     if (managing) {
@@ -104,6 +105,7 @@ fun SettingsScreen(api: CueApi, switchProfile: () -> Unit, changeServer: () -> U
         ) { showing ->
             Box(Modifier.fillMaxSize()) {
                 when (showing) {
+                    SettingsSection.Home -> HomeSettings()
                     SettingsSection.Account -> AccountSettings(api, switchProfile, changeServer, openWeb) { managing = true }
                     SettingsSection.Playback -> PlaybackSettings()
                     SettingsSection.Problems -> ProblemsSettings(api)
@@ -388,6 +390,50 @@ private fun AboutSettings(api: CueApi) {
             }
         }
         SettingRow("How Cue works", "The short tour of the remote and the side menu.", "") { Tour.showing = true }
+    }
+}
+
+// Cue Home as the TV's home screen: whether it's set up, and how.
+@Composable
+private fun HomeSettings() {
+    val ctx = LocalContext.current
+    // Read again whenever this shows (after coming back from Android's settings).
+    var tick by remember { mutableStateOf(0) }
+    val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(owner) {
+        val watch = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tick++ }
+        owner.lifecycle.addObserver(watch)
+        onDispose { owner.lifecycle.removeObserver(watch) }
+    }
+    val isHome = remember(tick) {
+        val i = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
+        ctx.packageManager.resolveActivity(i, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName == ctx.packageName
+    }
+    val buttonOn = remember(tick) {
+        android.provider.Settings.Secure.getString(ctx.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            ?.contains(ctx.packageName + "/") == true
+    }
+    val canRead = remember(tick) {
+        ctx.checkSelfPermission("com.android.providers.tv.permission.READ_EPG_DATA") == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    fun open(action: String) = runCatching { ctx.startActivity(android.content.Intent(action).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    Column(Modifier.focusGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Heading("CUE HOME")
+        Info("Home screen", if (isHome) "Cue Home" else "Not yet (the TV's own)")
+        Info("Home button", if (buttonOn) "Opens Cue Home" else "Off")
+        Info("Other apps", if (canRead) "Their Continue watching shows" else "Not allowed yet")
+        Gap(10.dp)
+        Heading("SETTING IT UP")
+        Text(
+            "Once, from a computer on the same Wi-Fi: turn on the TV's Developer options (Settings › System › About, press Build seven times), " +
+                "switch on USB or wireless debugging, then run use-cue-home from github.com/jhipsman/cue-home (scripts folder). " +
+                "It makes Cue Home the home screen, turns on the Home button, and lets it read other apps' Continue watching. " +
+                "use-original-home puts everything back.",
+            fontSize = 13.sp, color = Dim, lineHeight = 19.sp,
+        )
+        Gap(6.dp)
+        if (!buttonOn) SettingRow("Turn on the Home button", "Accessibility › Cue Home: the Home button.", "Open") { open(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS) }
+        if (!isHome) SettingRow("Choose the home screen", "Where the TV lets you pick it in its own settings.", "Open") { open(android.provider.Settings.ACTION_HOME_SETTINGS) }
     }
 }
 

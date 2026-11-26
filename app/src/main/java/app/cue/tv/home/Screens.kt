@@ -549,10 +549,12 @@ private val navItems = listOf(
     NavItem("Shows", app.cue.tv.R.drawable.ic_nav_shows, 1),
     NavItem("Live TV", app.cue.tv.R.drawable.ic_nav_live, 3),
     NavItem("Browse", app.cue.tv.R.drawable.ic_nav_browse, 9),
+    NavItem("Apps", app.cue.tv.R.drawable.ic_nav_apps, AppsPage),
 )
 private const val ProfilePage = 10
 private const val SettingsPage = 12
-private const val PageCount = 13
+private const val AppsPage = 13 // Cue Home: every app on the TV
+private const val PageCount = 14
 private val RailWidth = 72.dp
 private val RailOpenWidth = 212.dp // the rail's box, closed too (only its names fade in)
 
@@ -582,6 +584,15 @@ fun MainScreen(api: CueApi, playback: Playback, openWeb: (String) -> Unit, chang
     // app and on coming back from a title, but not while the remote moves
     // along the rail (each place's page shows as the highlight passes it).
     var pageTakesFocus by remember { mutableStateOf(true) }
+    // The Home button (Cue Home is the TV's home screen): Home, with nothing
+    // open over it.
+    LaunchedEffect(HomeSignal.presses) {
+        if (HomeSignal.presses == 0) return@LaunchedEffect
+        open.clear()
+        asking = false
+        tab = 0
+        pageTakesFocus = true
+    }
     BackHandler(enabled = open.isNotEmpty()) {
         open.removeAt(open.lastIndex)
         pageTakesFocus = true
@@ -679,7 +690,16 @@ fun MainScreen(api: CueApi, playback: Playback, openWeb: (String) -> Unit, chang
                 // Shown from the side menu: no rising into place (see rise).
                 CompositionLocalProvider(LocalCalm provides tabsFocused) {
                 when (showing) {
-                    0 -> HomeScreen(api, null, memories[0], pageTakesFocus, tookFocus, setAmbient, onCard, playback)
+                    0 -> LauncherHome(api, playback, memories[0], pageTakesFocus, tookFocus, setAmbient, onCard,
+                        openService = { svc ->
+                            browseState.open(BrowseAt.Service(svc))
+                            pageTakesFocus = true
+                            tab = 9
+                        },
+                        openLive = {
+                            pageTakesFocus = true
+                            tab = 3
+                        })
                     1 -> HomeScreen(api, "tv", memories[1], pageTakesFocus, tookFocus, setAmbient, onCard)
                     2 -> HomeScreen(api, "movie", memories[2], pageTakesFocus, tookFocus, setAmbient, onCard)
                     3 -> LiveScreen(api, playback, openWeb)
@@ -691,6 +711,7 @@ fun MainScreen(api: CueApi, playback: Playback, openWeb: (String) -> Unit, chang
                     8 -> TopScreen(api, memories[8], onCard)
                     9 -> BrowseScreen(api, memories[9], browseState, onCard)
                     11 -> AskScreen(api, memories[11], onCard)
+                    AppsPage -> AppsScreen(memories[AppsPage], pageTakesFocus, tookFocus)
                     SettingsPage -> SettingsScreen(api, switchProfile, changeServer, openWeb)
                     else -> ProfileScreen(api, switchProfile, changeServer, openWeb) {
                         tab = SettingsPage

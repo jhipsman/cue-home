@@ -316,6 +316,12 @@ private fun ServicePage(api: CueApi, s: BrowseService, memory: FocusMemory, onCa
                     HGap(14.dp)
                 }
                 Text(s.name, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                // Cue Home: the service's own app, from its page.
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                if (ServiceApps.has(ctx, s.key)) {
+                    HGap(20.dp)
+                    Pill("Open ${s.name}", primary = true) { ServiceApps.openApp(ctx, s.key) }
+                }
             }
         }
         when {

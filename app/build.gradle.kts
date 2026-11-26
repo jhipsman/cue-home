@@ -21,7 +21,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "app.cue.tv"
+        applicationId = "app.cue.home" // installs beside the Cue TV app (app.cue.tv)
         minSdk = 23 // Android 6 and later: every Fire TV Cube, Fire TV since 2017, Google TV
         targetSdk = 35
         versionCode = build

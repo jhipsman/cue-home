@@ -41,7 +41,8 @@ class TopTenBounceTest {
             throw AssertionError("never saw \"$t\"")
         }
         waitFor("Continue watching")
-        press(KeyEvent.KEYCODE_DPAD_LEFT); compose.mainClock.advanceTimeBy(500)
+        // Onto the menu (Home's highlight may still be settling: a few presses).
+        repeat(3) { press(KeyEvent.KEYCODE_DPAD_LEFT); compose.mainClock.advanceTimeBy(500) }
         press(KeyEvent.KEYCODE_DPAD_DOWN); compose.mainClock.advanceTimeBy(1500) // Movies: Top 10 first
         waitFor("Top 10 on")
         press(KeyEvent.KEYCODE_DPAD_RIGHT); compose.mainClock.advanceTimeBy(1500)

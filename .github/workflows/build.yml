@@ -1,0 +1,73 @@
+# Builds Cue Home, checks it (lint, and pictures of its screens taken on the
+# build machine), and on main publishes the APK as the "home-latest" release,
+# where Cue Home looks for its updates:
+#   https://github.com/<owner>/<repo>/releases/download/home-latest/cue-home.apk
+name: Cue Home
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # to publish the APK as a release
+
+concurrency:
+  group: cue-home-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21" # the screenshots run Robolectric's Android 15, which needs Java 21
+
+      - name: Build the APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk cue-home.apk
+          # The build number (the APK's versionCode), for the app's update check.
+          echo "${{ github.run_number }}" > cue-home.version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cue-home
+          path: cue-home.apk
+
+      - name: Screens
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Why the screens failed
+        if: failure()
+        run: sh ci/test-report.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens
+          path: app/build/screens
+          if-no-files-found: ignore
+
+      - name: Publish as the home-latest release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: home-latest
+          name: Cue Home (latest)
+          body: |
+            The latest build of Cue Home for Google TV and Android TV (build ${{ github.run_number }}).
+            Install cue-home.apk on the TV (Downloader, or adb install), then run scripts/use-cue-home from a computer to make it the home screen. See the README.
+          prerelease: true
+          make_latest: false
+          files: |
+            cue-home.apk
+            cue-home.version
+
+      - name: Lint
+        run: ./gradlew --no-daemon lintRelease

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Apps: a grid of nine dots (Browse is four squares). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M3.4,5a1.6,1.6 0 1,0 3.2,0a1.6,1.6 0 1,0 -3.2,0zM10.4,5a1.6,1.6 0 1,0 3.2,0a1.6,1.6 0 1,0 -3.2,0zM17.4,5a1.6,1.6 0 1,0 3.2,0a1.6,1.6 0 1,0 -3.2,0zM3.4,12a1.6,1.6 0 1,0 3.2,0a1.6,1.6 0 1,0 -3.2,0zM10.4,12a1.6,1.6 0 1,0 3.2,0a1.6,1.6 0 1,0 -3.2,0zM17.4,12a1.6,1.6 0 1,0 3.2,0a1.6,1.6 0 1,0 -3.2,0zM3.4,19a1.6,1.6 0 1,0 3.2,0a1.6,1.6 0 1,0 -3.2,0zM10.4,19a1.6,1.6 0 1,0 3.2,0a1.6,1.6 0 1,0 -3.2,0zM17.4,19a1.6,1.6 0 1,0 3.2,0a1.6,1.6 0 1,0 -3.2,0z" />
+</vector>
