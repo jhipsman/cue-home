@@ -11,6 +11,13 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -375,6 +382,32 @@ private fun LaunchCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(round)
+    if (lightMode()) {
+        // Light mode (a slow TV): a plain rounded box with a white edge
+        // when highlighted. No clipping, layers, lift or animated colours:
+        // the full card drew too slowly there, every card, every frame.
+        Box(
+            Modifier.size(width, height)
+                .focusRequester(memory.requester(memKey))
+                .onFocusChanged {
+                    focused = it.isFocused
+                    if (it.isFocused) {
+                        memory.key = memKey
+                        onFocus()
+                    }
+                }
+                // OK (or Enter) presses it, when let go, as a card does.
+                .onKeyEvent {
+                    val ok = it.key == Key.DirectionCenter || it.key == Key.Enter || it.key == Key.NumPadEnter
+                    if (ok && it.type == KeyEventType.KeyUp) onClick()
+                    ok
+                }
+                .focusable()
+                .background(if (focused) focusedFill else fill, shape)
+                .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0x14FFFFFF), shape),
+        ) { content(focused) }
+        return
+    }
     Card(
         onClick = onClick,
         modifier = Modifier.size(width, height).zIndex(if (focused) 1f else 0f)
@@ -403,11 +436,11 @@ private fun LaunchCard(
 private fun ResumePill(r: Resume, memory: FocusMemory, memKey: String, onFocus: () -> Unit, onClick: () -> Unit) {
     LaunchCard(memory, memKey, 280.dp, 66.dp, 33.dp, onFocus, onClick, focusedFill = Color(0xF2FFFFFF)) { focused ->
         Row(Modifier.fillMaxSize().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(96.dp, 54.dp).clip(RoundedCornerShape(27.dp)).background(Panel)) {
+            Box(Modifier.size(96.dp, 54.dp).roundIfFast(27.dp).background(Panel)) {
                 r.image?.let { AsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
                 r.progress?.let { p ->
                     Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 14.dp, vertical = 6.dp).fillMaxWidth().height(3.dp)
-                        .clip(RoundedCornerShape(2.dp)).background(Color(0x66FFFFFF))) {
+                        .background(Color(0x66FFFFFF))) {
                         Box(Modifier.fillMaxWidth(p).fillMaxHeight().background(Color.White))
                     }
                 }
@@ -439,7 +472,7 @@ private fun GuideTile(memory: FocusMemory, memKey: String, onFocus: () -> Unit, 
 private fun ChannelPill(api: CueApi, ch: Channel, memory: FocusMemory, memKey: String, onFocus: () -> Unit, onClick: () -> Unit) {
     LaunchCard(memory, memKey, 250.dp, 84.dp, 16.dp, onFocus, onClick) {
         Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(64.dp, 40.dp).clip(RoundedCornerShape(8.dp)).background(Color(0x14FFFFFF))) {
+            Box(Modifier.size(64.dp, 40.dp).background(Color(0x14FFFFFF), RoundedCornerShape(8.dp))) {
                 ChannelLogo(api, ch, Modifier.fillMaxSize().padding(4.dp))
             }
             HGap(10.dp)
@@ -458,7 +491,7 @@ private fun ServiceCard(s: BrowseService, memory: FocusMemory, memKey: String, o
     LaunchCard(memory, memKey, 150.dp, 84.dp, 16.dp, onFocus, onClick, fill = Color(0xFF111113), focusedFill = Color(0xFF1C1C1F)) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (s.logo != null) {
-                AsyncImage(model = s.logo, contentDescription = s.name, contentScale = ContentScale.Crop, modifier = Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)))
+                AsyncImage(model = s.logo, contentDescription = s.name, contentScale = ContentScale.Crop, modifier = Modifier.size(52.dp).roundIfFast(12.dp))
             } else {
                 Text(s.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
@@ -486,6 +519,11 @@ private fun AppBanner(a: TvApp, memory: FocusMemory, memKey: String, onFocus: ()
 // The apps' pictures, drawn once (drawing a banner as the Apps row scrolls
 // was a stutter at every step).
 private val pictures = HashMap<String, androidx.compose.ui.graphics.ImageBitmap?>()
+
+// Rounded corners on a picture (clipping it), except in Light mode, where
+// each clipped picture cost the slow TV an extra drawing pass every frame.
+@Composable
+private fun Modifier.roundIfFast(r: androidx.compose.ui.unit.Dp): Modifier = if (lightMode()) this else clip(RoundedCornerShape(r))
 
 private fun bitmap(d: Drawable, w: Int, h: Int) = runCatching { d.toBitmap(w, h).asImageBitmap() }.getOrNull()
 
