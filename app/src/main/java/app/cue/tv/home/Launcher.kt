@@ -434,7 +434,8 @@ private fun LaunchCard(
 // where you are beside it; white when highlighted.
 @Composable
 private fun ResumePill(r: Resume, memory: FocusMemory, memKey: String, onFocus: () -> Unit, onClick: () -> Unit) {
-    LaunchCard(memory, memKey, 280.dp, 66.dp, 33.dp, onFocus, onClick, focusedFill = Color(0xF2FFFFFF)) { focused ->
+    // Light mode: less rounded, so the picture's square corners sit inside the edge.
+    LaunchCard(memory, memKey, 280.dp, 66.dp, if (lightMode()) 14.dp else 33.dp, onFocus, onClick, focusedFill = Color(0xF2FFFFFF)) { focused ->
         Row(Modifier.fillMaxSize().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(96.dp, 54.dp).roundIfFast(27.dp).background(Panel)) {
                 r.image?.let { AsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
