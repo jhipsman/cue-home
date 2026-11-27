@@ -950,6 +950,12 @@ fun Banner(api: CueApi, c: Tile) {
 // preview clip fades in over the picture, muted (not in Light mode).
 @Composable
 fun HomeBackdrop(api: CueApi, c: Tile?) {
+    if (lightMode()) {
+        // Light mode (a slow TV): a plain background. The big picture and
+        // its two full-screen fades were drawn again with every frame.
+        Box(Modifier.fillMaxSize().background(Background))
+        return
+    }
     Box(Modifier.fillMaxSize().background(Background)) {
         val area = Modifier.align(Alignment.TopEnd).fillMaxWidth(0.82f).fillMaxHeight(0.8f)
         Crossfade(targetState = c?.backdrop, animationSpec = if (lightMode()) snap() else tween(450, easing = Settle), label = "home-backdrop", modifier = area) { u ->
